@@ -1,6 +1,7 @@
 // Projects API routes - List and Create
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { DEFAULT_GEMINI_MODEL } from '@/lib/constants/gemini-models';
 
 // Create Supabase client with service role for server-side operations
 const supabaseAdmin = createClient(
@@ -58,7 +59,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
         }
 
-        const { name, description } = await request.json();
+        const { name, description, gemini_api_key, gemini_model } = await request.json();
 
         if (!name || name.trim() === '') {
             return NextResponse.json({ error: 'Project name is required' }, { status: 400 });
@@ -72,6 +73,8 @@ export async function POST(request: NextRequest) {
                     user_id: user.id,
                     name: name.trim(),
                     description: description?.trim() || null,
+                    gemini_api_key: gemini_api_key?.trim() || null,
+                    gemini_model: gemini_model || DEFAULT_GEMINI_MODEL
                 },
             ])
             .select()

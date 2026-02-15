@@ -1,5 +1,5 @@
 // Result formatter - transforms BigQuery results and detects visualization type
-import { InsightResult, ChartData } from '@/types/insight';
+import { InsightResult } from '@/types/insight';
 import { VisualizationType } from '@/types/chat';
 
 /**
@@ -68,22 +68,4 @@ function detectVisualizationType(results: Record<string, unknown>[]): Visualizat
     }
 
     return 'table';
-}
-
-/**
- * Transform results into chart data format
- */
-export function toChartData(results: Record<string, unknown>[]): ChartData {
-    if (!results || results.length === 0) {
-        return { labels: [], values: [] };
-    }
-
-    const keys = Object.keys(results[0]);
-    const labelKey = keys[0];
-    const valueKey = keys[1] || keys[0];
-
-    return {
-        labels: results.map(row => String(row[labelKey])),
-        values: results.map(row => Number(row[valueKey]) || 0),
-    };
 }

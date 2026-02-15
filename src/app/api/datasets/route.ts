@@ -1,8 +1,8 @@
-// Dataset API - Link BigQuery tables to projects
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { getTableSchema } from '@/lib/bigquery/client';
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { getTableSchema } from "@/lib/bigquery/client";
 
+// Create Supabase client with service role for bypassing RLS
 const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -10,151 +10,84 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: NextRequest) {
     try {
-        // Authenticate user
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         const token = authHeader.replace('Bearer ', '');
+        // Verify user session to ensure security
         const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
 
         if (authError || !user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+            return NextResponse.json({ error: 'Unauthorized: Invalid session' }, { status: 401 });
         }
 
-        const {
-            project_id,
-            bigquery_project_id,
-            bigquery_dataset_id,
-            bigquery_table_id
-        } = await request.json();
+        const { projectId, tableName } = await request.json();
 
-        // Validate input
-        if (!project_id || !bigquery_project_id || !bigquery_dataset_id || !bigquery_table_id) {
-            return NextResponse.json({
-                error: 'All fields are required: project_id, bigquery_project_id, bigquery_dataset_id, bigquery_table_id'
-            }, { status: 400 });
+        // Parse tableName (project.dataset.table)
+        const parts = tableName.split('.');
+        if (parts.length < 3) {
+            return NextResponse.json({ error: 'Invalid table name format. Expected project.dataset.table' }, { status: 400 });
         }
 
-        // Verify user owns the project
-        const { data: project, error: projectError } = await supabaseAdmin
-            .from('projects')
-            .select('id')
-            .eq('id', project_id)
-            .eq('user_id', user.id)
-            .single();
+        const bqProjectId = parts[0];
+        const bqDatasetId = parts[1];
+        const bqTableId = parts[2];
 
-        if (projectError || !project) {
-            return NextResponse.json({
-                error: 'Project not found or access denied'
-            }, { status: 403 });
-        }
+        // 1. Get Metadata (Schema) using centralized client
+        // This will throw if credentials are bad or table not found
+        const schema = await getTableSchema(bqProjectId, bqDatasetId, bqTableId);
 
-        // Get table schema from BigQuery
-        let schema = null;
-        try {
-            schema = await getTableSchema(bigquery_project_id, bigquery_dataset_id, bigquery_table_id);
-        } catch (error: unknown) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            return NextResponse.json({
-                error: `Failed to fetch table schema from BigQuery: ${errorMessage}`
-            }, { status: 400 });
-        }
-
-        // Normalize IDs before saving
-        const cleanProjectId = bigquery_project_id.trim();
-        const cleanDatasetId = bigquery_dataset_id.includes('.') ? bigquery_dataset_id.split('.').pop()!.trim() : bigquery_dataset_id.trim();
-        const cleanTableId = bigquery_table_id.includes('.') ? bigquery_table_id.split('.').pop()!.trim() : bigquery_table_id.trim();
-
-        // Create dataset link
-        const { data: dataset, error } = await supabaseAdmin
+        // 3. Create Dataset in Supabase using ADMIN client to bypass RLS
+        const { data: dataset, error: dsError } = await supabaseAdmin
             .from('datasets')
-            .insert([
-                {
-                    project_id,
-                    bigquery_project_id: cleanProjectId,
-                    bigquery_dataset_id: cleanDatasetId,
-                    bigquery_table_id: cleanTableId,
-                    schema_json: schema,
-                },
-            ])
+            .insert({
+                project_id: projectId,
+                bigquery_project_id: bqProjectId,
+                bigquery_dataset_id: bqDatasetId,
+                bigquery_table_id: bqTableId,
+                schema_json: schema
+            })
             .select()
             .single();
 
-        if (error) {
-            // Check for unique constraint violation
-            if (error.code === '23505') {
-                return NextResponse.json({
-                    error: 'This dataset is already linked to this project'
-                }, { status: 409 });
-            }
-            console.error('Error creating dataset:', error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
+        if (dsError) {
+            console.error('Supabase Insert Error:', dsError);
+            throw new Error(`Failed to save dataset: ${dsError.message}`);
         }
 
-        return NextResponse.json({ dataset }, { status: 201 });
-    } catch (error: unknown) {
-        console.error('Dataset POST error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
-    }
-}
-
-export async function GET(request: NextRequest) {
-    try {
-        // Authenticate user
-        const authHeader = request.headers.get('authorization');
-        if (!authHeader) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        const token = authHeader.replace('Bearer ', '');
-        const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token);
-
-        if (authError || !user) {
-            return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-        }
-
-        // Get project_id from query params
-        const { searchParams } = new URL(request.url);
-        const projectId = searchParams.get('project_id');
-
-        if (!projectId) {
-            return NextResponse.json({
-                error: 'project_id query parameter is required'
-            }, { status: 400 });
-        }
-
-        // Verify user owns the project
-        const { data: project, error: projectError } = await supabaseAdmin
+        // 4. Update project to reflect connected status
+        const { error: projError } = await supabaseAdmin
             .from('projects')
-            .select('id')
-            .eq('id', projectId)
-            .eq('user_id', user.id)
-            .single();
+            .update({
+                dataset_id: dataset.id,
+                updated_at: new Date().toISOString()
+            })
+            .eq('id', projectId);
 
-        if (projectError || !project) {
-            return NextResponse.json({
-                error: 'Project not found or access denied'
-            }, { status: 403 });
+        if (projError) {
+            console.error('Supabase Project Update Error:', projError);
+            // Don't throw here, dataset is already created
         }
 
-        // Get datasets for this project
-        const { data: datasets, error } = await supabaseAdmin
-            .from('datasets')
-            .select('*')
-            .eq('project_id', projectId);
+        return NextResponse.json({ success: true, dataset });
 
-        if (error) {
-            console.error('Error fetching datasets:', error);
-            return NextResponse.json({ error: error.message }, { status: 500 });
-        }
-
-        return NextResponse.json({ datasets: datasets || [] });
     } catch (error: unknown) {
-        console.error('Dataset GET error:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        console.error('Dataset API Error:', error);
+
+        let errorMessage = 'An error occurred';
+        if (error instanceof Error) {
+            errorMessage = error.message;
+        } else if (typeof error === 'object' && error !== null && 'message' in error) {
+            errorMessage = String((error as Record<string, unknown>).message);
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        } else {
+            errorMessage = String(error);
+        }
+
+        return NextResponse.json({
+            error: errorMessage,
+            details: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        }, { status: 500 });
     }
 }

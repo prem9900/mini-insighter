@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase/client";
-import Logo from "@/components/Logo";
+import Logo from "@/components/shared/Logo";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -33,21 +33,21 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white bg-grid-subtle px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-md card space-y-8 animate-fade-in p-6 sm:p-8">
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="w-full max-w-md card space-y-8 p-6 sm:p-8 border-gray-200 shadow-xl animate-in fade-in zoom-in-95 duration-500">
         <div className="text-center space-y-4">
           <div className="flex justify-center">
             <Logo size={64} />
           </div>
           <div className="space-y-1">
-            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-zinc-900 tracking-tight">Mini Insighter</h1>
-            <h2 className="text-base sm:text-lg font-medium text-zinc-600">Welcome Back</h2>
+            <h1 className="text-2xl sm:text-3xl font-heading font-bold text-gray-900 tracking-tight">Mini Insighter</h1>
+            <h2 className="text-base sm:text-lg font-medium text-gray-600">Welcome back</h2>
           </div>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-zinc-700">Email Address</label>
+            <label className="text-sm font-bold text-gray-700">Email Address</label>
             <input
               type="email"
               placeholder="name@example.com"
@@ -59,7 +59,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-sm font-medium text-zinc-700">Password</label>
+            <label className="text-sm font-bold text-gray-700">Password</label>
             <input
               type="password"
               placeholder="••••••••"
@@ -71,7 +71,8 @@ export default function LoginPage() {
           </div>
 
           {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium animate-fade-in border border-red-100">
+            <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium animate-bounce border border-red-100 flex items-center gap-2">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {error}
             </div>
           )}
@@ -79,20 +80,19 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary w-full py-2.5 sm:py-2"
+            className="btn-primary w-full py-2.5 sm:py-2 shadow-lg shadow-blue-600/20"
           >
             {loading ? "Authenticating..." : "Sign In"}
           </button>
         </form>
 
-        <div className="text-center text-sm text-zinc-500">
+        <div className="text-center text-sm text-gray-500">
           Don&apos;t have an account?{" "}
-          <Link href="/signup" className="font-semibold text-zinc-900 hover:text-black transition-colors block sm:inline mt-2 sm:mt-0">
-            Sign up for free
+          <Link href="/signup" className="font-bold text-blue-600 hover:text-blue-700 transition-colors block sm:inline mt-2 sm:mt-0">
+            Create account
           </Link>
         </div>
       </div>
     </div>
   );
 }
-
